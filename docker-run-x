@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+sound=(
+	--device /dev/snd
+)
+
+x11=(
+	-v /tmp/.X11-unix:/tmp/.X11-unix:ro
+	-e DISPLAY
+	--net host # in case of DISPLAY=localhost:*
+	-v ~/.Xauthority:/home/user/.Xauthority:ro
+)
+
+exec docker run "${x11[@]}" "${sound[@]}" "$@"

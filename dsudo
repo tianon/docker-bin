@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+
+exec docker run -it --rm --privileged --net=host --pid=host -v /:/host debian chroot /host "$@"

@@ -1,0 +1,49 @@
+#!/bin/bash
+set -e
+
+# see also https://www.stgraber.org/2012/11/16/running-steam-in-a-lxc-container/
+# and https://bazaar.launchpad.net/~ubuntu-lxc/lxc/steam-lxc/view/head:/steam-lxc
+x11dri=(
+	--device /dev/dri
+)
+
+# to solve the disparity of drivers between the host and the container, take the host drivers and mount them directly inside the container
+gllibs=()
+
+# note: glob here stolen from /usr/share/eselect/modules/opengl.eselect on my Gentoo system :)
+for file in /usr/lib/lib{EGL,GL*,OpenVG}{,core}.{so,dylib,a}; do
+	if [ -e "$file" ]; then
+		gllibs+=( "$file" )
+	fi
+done
+
+# deps of our gllibs are necessary evils
+for file in $(ldd "${gllibs[@]}" 2>/dev/null | awk '/ => / { print $3 }' | sort -u); do
+	if [ -e "$file" ]; then
+		gllibs+=( "$file" )
+	else
+		echo >&2 "warning: can't find $file (which is necessary)"
+	fi
+done
+
+cowardlyFiles=( libc.so libgcc libstdc libpthread )
+for file in "${gllibs[@]}"; do
+	for coward in "${cowardlyFiles[@]}"; do
+		if [[ "$file" == *$coward* ]]; then
+			echo >&2 "warning: cowardly refusing to link '$file' into the container"
+			continue 2
+		fi
+	done
+	x11dri+=( -v "$file":"/docker-gl-lib/$(basename "$file")":ro )
+done
+
+x11dri+=( -e 'LD_LIBRARY_PATH=/docker-gl-lib' )
+
+# extra device/driver-specific nonsense
+if [ -e /dev/nvidiactl ]; then
+	for dev in /dev/nvidia*; do
+		x11dri+=( --device "$dev" )
+	done
+fi
+
+exec "$(dirname "$(readlink -f "$BASH_SOURCE")")/docker-run-x" "${x11dri[@]}" "$@"
