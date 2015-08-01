@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+
+exec docker run -i --rm --net=host tianon/speedtest "$@"
