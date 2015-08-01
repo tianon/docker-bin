@@ -19,4 +19,4 @@ done
 awkward="${awkward# }"
 
 set -x
-docker images | awk "$awkward" | xargs --no-run-if-empty docker rmi
+docker images | awk -F '  +' "$awkward" | xargs --no-run-if-empty docker rmi
