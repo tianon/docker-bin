@@ -1,0 +1,40 @@
+#!/bin/bash
+set -e
+
+# usage: docker-ssh-bg -o ControlMaster=yes me@some.server
+
+dockerArgs=(
+	-dit --restart always
+	-v "$PWD:/host/$PWD"
+	-w "/host/$PWD"
+	-v "$HOME:/host/$HOME"
+	-e HOME="/host/$HOME"
+	-v "$HOME/.ssh:$HOME/.ssh" # uhh, ssh(1) is silly (doesn't respect HOME)
+	# Docker reads /etc/passwd and /etc/group before mounting volumes
+	-u "$(id -u):$(id -g)"
+	$(id -G | xargs -n1 echo --group-add)
+	-v /etc/passwd:/etc/passwd:ro
+	-v /etc/group:/etc/group:ro
+	-v /etc/localtime:/etc/localtime:ro
+	-e HISTSIZE -e HISTFILE -e HISTFILESIZE -e HISTCMD -e HISTCONTROL
+	--tmpfs /tmp
+)
+
+before=()
+sawDash=
+while [ "$#" -gt 0 ]; do
+	i="$1"; shift
+	if [ "$i" = '--' ]; then
+		sawDash=1
+		break
+	fi
+	before+=( "$i" )
+done
+
+if [ "$sawDash" ]; then
+	dockerArgs+=( "${before[@]}" )
+else
+	set -- "${before[@]}"
+fi
+
+exec docker run "${dockerArgs[@]}" buildpack-deps:sid-scm ssh -N "$@"
