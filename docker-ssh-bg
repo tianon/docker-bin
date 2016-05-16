@@ -10,7 +10,7 @@ set -e
 #                ControlPath ~/.ssh/sockets/%r@%h-%p
 #
 #        docker-ssh-bg --name docker-some-server --expose 2375 -- me@some.server -L 0.0.0.0:2375:/var/run/docker.sock
-#          docker -H tcp://docker-some-server.docker:2375 info
+#        docker -H tcp://docker-some-server.docker:2375 info
 
 dockerArgs=(
 	-dit --restart always
