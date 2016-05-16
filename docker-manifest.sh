@@ -1,6 +1,11 @@
 #!/bin/bash
 set -eo pipefail
 
+# usage: docker-manifest.sh image [image ...]
+#    ie: docker-manifest.sh tianon/speedtest
+
+# TODO add support for non-Hub-hosted repos
+
 declare -A tokens=()
 declare -A manifests=()
 declare -A digests=()
