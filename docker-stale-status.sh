@@ -7,6 +7,7 @@ unset IFS
 
 for container in "${containers[@]}"; do
 	name="$(docker inspect -f '{{.Name}}' "$container")"
+	name="${name#/}"
 	imageId="$(docker inspect -f '{{.Image}}' "$container")"
 	image="$(docker inspect -f '{{.Config.Image}}' "$container")"
 	imageImageId="$(docker inspect -f '{{.Id}}' "$image")"
