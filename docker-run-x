@@ -10,6 +10,7 @@ x11=(
 	-e DISPLAY
 	--net host # in case of DISPLAY=localhost:*
 	-v ~/.Xauthority:/home/user/.Xauthority:ro
+	--ipc host # DevShm errors...
 )
 
 exec docker run "${x11[@]}" "${sound[@]}" "$@"
