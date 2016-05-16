@@ -17,6 +17,18 @@ if [ ${#dockerPs[@]} -gt 0 ]; then
 	)
 fi
 
+dockerVolumes=( $(docker volume ls -q) )
+if [ ${#dockerVolumes[@]} -gt 0 ]; then
+	(
+		set -x
+		df -hT "$dockerRoot"
+		df -hTi "$dockerRoot"
+		docker volume rm "${dockerVolumes[@]}" || true
+		df -hT "$dockerRoot"
+		df -hTi "$dockerRoot"
+	)
+fi
+
 dockerUntaggedImages=( $(docker images -q --filter 'dangling=true') )
 if [ ${#dockerUntaggedImages[@]} -gt 0 ]; then
 	(
