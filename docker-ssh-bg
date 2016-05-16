@@ -1,7 +1,16 @@
 #!/bin/bash
 set -e
 
-# usage: docker-ssh-bg -o ControlMaster=yes me@some.server
+# usage: docker-ssh-bg [docker args --] [ssh args]
+#
+#        docker-ssh-bg --name ssh-some-server -- me@some.server -o ControlMaster=yes
+#          in ~/.ssh/config:
+#            Match all
+#                # use sockets if they're available
+#                ControlPath ~/.ssh/sockets/%r@%h-%p
+#
+#        docker-ssh-bg --name docker-some-server --expose 2375 -- me@some.server -L 0.0.0.0:2375:/var/run/docker.sock
+#          docker -H tcp://docker-some-server.docker:2375 info
 
 dockerArgs=(
 	-dit --restart always
