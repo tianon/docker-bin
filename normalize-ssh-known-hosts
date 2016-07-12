@@ -1,0 +1,60 @@
+#!/bin/bash
+set -eu
+
+src="$HOME/.ssh/known_hosts"
+tmp="$src.normalized"
+
+awk '
+	{
+		split($1, splitHosts, ",");
+		for (i in splitHosts) {
+			host = splitHosts[i];
+			hosts[$2 " " $3][host] = 1;
+		}
+	}
+	function host_compare_bracket(host) {
+		if (host ~ /^\[?[0-9]/) {
+			return 3;
+		} else if (host ~ /^\[/) {
+			return 2;
+		} else {
+			return 1;
+		}
+	}
+	function host_compare(host1, host2) {
+		host1bracket = host_compare_bracket(host1);
+		host2bracket = host_compare_bracket(host2);
+		if (host1bracket == host2bracket) {
+			if (host1 < host2) {
+				return -1;
+			} else if (host1 == host2) {
+				return 0;
+			} else {
+				return 1;
+			}
+		}
+		return host1bracket - host2bracket;
+	}
+	function host_sort(i1, v1, i2, v2) {
+		indexes = host_compare(i1, i2);
+		if (indexes != 0) {
+			return indexes;
+		}
+		return host_compare(v1, v2);
+	}
+	END {
+		PROCINFO["sorted_in"] = "host_sort";
+		for (key in hosts) {
+			lineHosts = "";
+			for (host in hosts[key]) {
+				lineHosts = (lineHosts ? lineHosts "," : "") host;
+			}
+			lines[lineHosts] = key;
+		}
+		for (lineHosts in lines) {
+			print lineHosts, lines[lineHosts];
+		}
+	}
+' "$src" > "$tmp"
+[ -s "$tmp" ] # basic sanity check
+mv "$tmp" "$src"
