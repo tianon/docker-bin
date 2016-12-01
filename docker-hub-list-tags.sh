@@ -7,9 +7,11 @@ self="$(basename "$0")"
 usage() {
 	cat <<-EOUSAGE
 
-		usage: $self [options] repo
+		usage: $self [options] repo [repo ...]
 
 		   ie: $self library/docker
+
+		       $self library/docker tianon/docker-master | sort -uV
 
 		       $self --jq '.results[]' tianon/syncthing
 
@@ -42,8 +44,8 @@ while true; do
 	esac
 done
 
-if [ "$#" -ne 1 ]; then
-	echo >&2 'error: expected exactly one "repo" argument'
+if [ "$#" -eq 0 ]; then
+	echo >&2 'error: expected at lease one "repo" argument'
 	usage >&2
 	exit 1
 fi
@@ -63,4 +65,8 @@ _all() {
 	done
 }
 
-_all "$@"
+while [ "$#" -gt 0 ]; do
+	repo="$1"
+	shift
+	_all "$repo"
+done
