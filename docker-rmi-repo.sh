@@ -11,12 +11,12 @@ fi
 awkward=
 for repo in "$@"; do
 	if [ "$repo" = '<none>' ]; then
-		awkward+=' $1 == "<none>" && $2 == "<none>" { print $3 }'
+		awkward+=' $1 == "<none>" && $2 == "<none>" { print $4 }'
 	else
-		awkward+=' $1 == "'"$repo"'" { print $1":"$2 }'
+		awkward+=' $1 == "'"$repo"'" { if ($2 == "<none>") { print $1 "@" $3 } else { print $1 ":" $2 } }'
 	fi
 done
 awkward="${awkward# }"
 
 set -x
-docker images | awk -F '  +' "$awkward" | xargs --no-run-if-empty docker rmi
+docker images --digests | awk -F '  +' "$awkward" | xargs --no-run-if-empty docker rmi
