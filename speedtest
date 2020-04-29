@@ -1,4 +1,14 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-exec docker run -i --rm --net=host tianon/speedtest "$@"
+args=(
+	--interactive --rm
+	--network host
+	--name speedtest
+)
+
+if [ -t 0 ] && [ -t 1 ]; then
+	args+=( --tty )
+fi
+
+exec docker run "${args[@]}" tianon/speedtest "$@"
