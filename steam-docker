@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+uid="$(id -u)"
+gid="$(id -g)"
+hostname="$(hostname --short)"
+
+mkdir -p "$HOME/steam-home"
+steamHome="$(cd "$HOME/steam-home" && pwd -P)"
+
+args=(
+	--name steam
+	--init --rm
+	--hostname "steam-docker-$hostname"
+
+	--user "$uid:$gid"
+	--security-opt no-new-privileges
+
+	--mount type=bind,src="$steamHome",dst=/steam-home
+	--env HOME=/steam-home
+	--workdir /steam-home
+
+	--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,ro
+	--env DISPLAY
+	--device /dev/dri # OpenGL
+	--ipc host # DevShm errors
+
+	--mount type=bind,src=/etc/localtime,dst=/etc/localtime,ro
+	--mount type=bind,src=/etc/machine-id,dst=/etc/machine-id,ro
+	--mount type=bind,src=/var/run/dbus,dst=/var/run/dbus,ro
+
+	#--cap-add SYS_PTRACE
+	#--security-opt seccomp:unconfined
+	#--env DEBUGGER=gdb
+	#--env DEBUGGER=strace
+)
+
+if [ -d /dev/input ]; then
+	args+=(
+		--mount type=bind,src=/dev/input,dst=/dev/input,ro
+		--device-cgroup-rule 'c 13:* rmw'
+		# TODO do we need to auto-detect the major of devices in the host's /dev/input directory, or is 13 pretty reliable?
+	)
+fi
+
+if [ -S "/run/user/$uid/pulse/native" ]; then
+	args+=(
+		--mount type=bind,src="/run/user/$uid/pulse",dst=/pulse,ro
+		--env PULSE_SERVER='unix:/pulse/native'
+	)
+fi
+
+args+=( --interactive )
+if [ -t 0 ] && [ -t 1 ]; then
+	args+=( --tty )
+fi
+
+exec docker run "${args[@]}" tianon/steam "$@"
