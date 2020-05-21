@@ -11,7 +11,7 @@ steamHome="$(cd "$HOME/steam-home" && pwd -P)"
 args=(
 	--name steam
 	--init --rm
-	--hostname "steam-docker-$hostname"
+	--hostname "$hostname-docker"
 
 	--user "$uid:$gid"
 	--security-opt no-new-privileges
