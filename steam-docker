@@ -35,6 +35,72 @@ args=(
 	#--env DEBUGGER=strace
 )
 
+image='tianon/steam'
+buildNeedsSanity=1
+_build() {
+	local suffix="$1"; shift
+	local newImage="$image"
+	case "$image" in
+		*:*) newImage+="-$suffix" ;;
+		*)   newImage+=":$suffix" ;;
+	esac
+	local sanity=$'USER root\nRUN grep -qF ID=ubuntu /etc/os-release\n'
+	if [ -n "$buildNeedsSanity" ]; then
+		buildNeedsSanity=
+	else
+		sanity=
+	fi
+	local steps; steps="$(cat)"
+	docker build --tag "$newImage" - <<-EODF
+		FROM $image
+		$sanity
+		$steps
+	EODF
+	image="$newImage"
+}
+
+# NVIDIA...
+if glxinfo="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA Corporation' <<<"$glxinfo"; then
+	# time to get creative...?
+	if nvidiaVersion="$(sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}[.][0-9]+).*/s//\1/p' <<<"$glxinfo")" && [ -n "$nvidiaVersion" ]; then
+		nvidiaMajor="${nvidiaVersion%%.*}"
+		_build "nvidia-$nvidiaVersion" <<-EODF
+			RUN set -eux; \
+				apt-get update; \
+				apt-get install -y --no-install-recommends \
+					pkg-config \
+				; \
+				rm -rf /var/lib/apt/lists/*
+			RUN set -eux; \
+				wget -O nvidia.run 'http://us.download.nvidia.com/XFree86/Linux-x86_64/$nvidiaVersion/NVIDIA-Linux-x86_64-$nvidiaVersion.run' --progress=dot:giga; \
+				chmod +x nvidia.run; \
+				./nvidia.run --advanced-options; \
+				./nvidia.run \
+					--no-questions \
+					--ui=none \
+					--no-nvidia-modprobe \
+					--no-rpms \
+					--no-backup \
+					--no-kernel-module \
+					--no-nouveau-check \
+					--no-check-for-alternate-installs \
+				; \
+				rm nvidia.run
+		EODF
+		for device in /dev/nvidia*; do
+			if [ -e "$device" ]; then
+				args+=( --device "$device" )
+			fi
+		done
+	else
+		echo >&2 'error: NVIDIA detected, but version number not found!'
+		echo >&2
+		echo >&2 "$glxinfo"
+		echo >&2
+		exit 1
+	fi
+fi
+
 if [ -d /dev/input ]; then
 	args+=(
 		--mount type=bind,src=/dev/input,dst=/dev/input,ro
@@ -55,4 +121,4 @@ if [ -t 0 ] && [ -t 1 ]; then
 	args+=( --tty )
 fi
 
-exec docker run "${args[@]}" tianon/steam "$@"
+exec docker run "${args[@]}" "$image" "$@"
