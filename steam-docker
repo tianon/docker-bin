@@ -29,10 +29,8 @@ args=(
 	--mount type=bind,src=/etc/machine-id,dst=/etc/machine-id,ro
 	--mount type=bind,src=/var/run/dbus,dst=/var/run/dbus,ro
 
-	#--cap-add SYS_PTRACE
-	#--security-opt seccomp:unconfined
-	#--env DEBUGGER=gdb
-	#--env DEBUGGER=strace
+	# TODO figure out why Proton requires this, and give it a more specific profile instead
+	--security-opt seccomp:unconfined
 )
 
 image='tianon/steam'
