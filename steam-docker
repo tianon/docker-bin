@@ -121,4 +121,22 @@ if [ -t 0 ] && [ -t 1 ]; then
 	args+=( --tty )
 fi
 
+case "${DEBUGGER:-}" in
+	'') ;;
+	strace | gdb)
+		_build "debug-$DEBUGGER" <<-EODF
+			RUN set -eux; \
+				apt-get update; \
+				apt-get install -y --no-install-recommends $DEBUGGER; \
+				rm -rf /var/lib/apt/lists/*
+		EODF
+		args+=(
+			--env DEBUGGER
+			--cap-add SYS_PTRACE
+			--security-opt seccomp:unconfined
+			--security-opt apparmor:unconfined
+		)
+		;;
+esac
+
 exec docker run "${args[@]}" "$image" "$@"
