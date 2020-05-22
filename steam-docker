@@ -139,4 +139,5 @@ case "${DEBUGGER:-}" in
 		;;
 esac
 
+set -x
 exec docker run "${args[@]}" "$image" "$@"
