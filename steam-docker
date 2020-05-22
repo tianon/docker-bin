@@ -100,11 +100,13 @@ if glxinfo="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA
 fi
 
 if [ -d /dev/input ]; then
-	args+=(
-		--mount type=bind,src=/dev/input,dst=/dev/input,ro
-		--device-cgroup-rule 'c 13:* rmw'
-		# TODO do we need to auto-detect the major of devices in the host's /dev/input directory, or is 13 pretty reliable?
-	)
+	args+=( --mount type=bind,src=/dev/input,dst=/dev/input,ro )
+
+	majors="$(find /dev/input -type c -exec stat --format='%t' '{}' + | sort -u)"
+	for major in $majors; do
+		majorDec="$(( 16#$major ))"
+		args+=( --device-cgroup-rule "c $majorDec:* rmw" )
+	done
 fi
 
 if [ -S "/run/user/$uid/pulse/native" ]; then
