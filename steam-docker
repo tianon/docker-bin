@@ -5,20 +5,63 @@ uid="$(id -u)"
 gid="$(id -g)"
 hostname="$(hostname --short)"
 
-mkdir -p "$HOME/steam-home"
-steamHome="$(cd "$HOME/steam-home" && pwd -P)"
-
+self="$(basename "$0")"
+self="${self%-docker}"
+home="$HOME/homes/$self"
 args=(
-	--name steam
+	--rm
+	--security-opt no-new-privileges
+)
+image="tianon/$self"
+case "$self" in
+	steam)
+		;;
+
+	lutris)
+		args+=(
+			# Lutris uses $USER for Wine home directory detection
+			--env USER="$uid"
+			# https://github.com/lutris/lutris/blob/4315ba26f55dc208105b8abebf49d9ec28a67a1b/lutris/util/wine/prefix.py#L97
+		)
+		;;
+
+	zoom)
+		for device in /dev/video[0-9]*; do
+			if [ -c "$device" ]; then
+				args+=( --device "$device" )
+			fi
+		done
+		;;
+
+	slack)
+		# TODO figure out how to get over this properly instead D: (probably similar to what Edge needs)
+		args+=(
+			--cap-add SYS_ADMIN
+			--security-opt no-new-privileges=false
+		)
+		;;
+
+	*)
+		echo >&2 "error: unknown Docker image: $self"
+		exit 1
+		;;
+esac
+
+args+=(
+	--name "$self"
 	--init --rm
 	--hostname "$hostname-docker"
+)
 
+mkdir -p "$home"
+home="$(cd "$home" && pwd -P)"
+
+args+=(
 	--user "$uid:$gid"
-	--security-opt no-new-privileges
 
-	--mount type=bind,src="$steamHome",dst=/steam-home
-	--env HOME=/steam-home
-	--workdir /steam-home
+	--mount type=bind,src="$home",dst="/$self-home"
+	--env HOME="/$self-home"
+	--workdir "/$self-home"
 
 	--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,ro
 	--env DISPLAY
@@ -32,8 +75,12 @@ args=(
 	# TODO figure out why Proton requires this, and give it a more specific profile instead
 	--security-opt seccomp:unconfined
 )
+for addGid in $(id -G); do
+	if [ "$addGid" != "$gid" ]; then
+		args+=( --group-add "$addGid" )
+	fi
+done
 
-image='tianon/steam'
 buildNeedsSanity=1
 _build() {
 	local suffix="$1"; shift
@@ -108,10 +155,20 @@ if [ -d /dev/input ]; then
 		args+=( --device-cgroup-rule "c $majorDec:* rmw" )
 	done
 fi
+if [ -e /dev/uinput ]; then
+	args+=( --device /dev/uinput )
+fi
+if [ -d /run/udev ]; then
+	args+=( --mount type=bind,src=/run/udev,dst=/run/udev,ro )
+fi
+for device in /dev/hidraw*; do
+	[ -c "$device" ] || continue
+	args+=( --device "$device" )
+done
 
-if [ -S "/run/user/$uid/pulse/native" ]; then
+if [ -d "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/pulse/native" ]; then
 	args+=(
-		--mount type=bind,src="/run/user/$uid/pulse",dst=/pulse,ro
+		--mount type=bind,src="$XDG_RUNTIME_DIR/pulse",dst=/pulse,ro
 		--env PULSE_SERVER='unix:/pulse/native'
 	)
 fi
