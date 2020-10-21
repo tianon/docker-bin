@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# takes a Docker image and adds NVIDIA drivers to it (hopefully)
+
+#   nvidiaVersion="$(nvidiize --detect)"
+#   nvidiize --version "$nvidiaVersion" --cache --pull
+#   docker pull tianon/steam
+#   image="$(nvidiize --version "$nvidiaVersion" --image tianon/steam)"
+#   nvidiize --version "$nvidiaVersion" --tag "$image" tianon/steam
+#   docker run ... "$image"
+
+_detect() {
+	local glxinfo
+	if glxinfo="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA Corporation' <<<"$glxinfo"; then
+		sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}[.][0-9]+).*/s//\1/p' <<<"$glxinfo"
+	fi
+}
+
+opts="$(getopt --options '' --longoptions 'cache,detect,dockerfile,image,pull,tag:,version:' -- "$@")"
+eval "set -- $opts"
+
+doCache=
+doImage=
+dockerBuild=( docker build - )
+nvidiaVersion=
+imageTag=
+while true; do
+	flag="$1"; shift
+	case "$flag" in
+		--cache) doCache=1 ;;
+		--detect) nvidiaVersion="$(_detect)"; if [ -n "$nvidiaVersion" ]; then echo "$nvidiaVersion"; exit; else exit 1; fi ;;
+		--dockerfile) dockerBuild=( cat ) ;;
+		--image) doImage=1 ;;
+		--pull) dockerBuild+=( --pull ) ;;
+		--tag) imageTag="$1"; shift ;;
+		--version) nvidiaVersion="$1"; shift ;;
+		--) break ;;
+		*)
+			echo >&2 "error: unknown flag: '$flag'"
+			exit 1
+			;;
+	esac
+done
+
+if [ -n "$doCache" ]; then
+	from='cache-placeholder'
+	user=
+else
+	from="$1"; shift
+	user="$(docker image inspect --format '{{ .Config.User }}' "$from")"
+fi
+
+if [ -z "$nvidiaVersion" ]; then
+	nvidiaVersion="$(_detect)"
+fi
+
+if [ -z "$nvidiaVersion" ]; then
+	echo >&2
+	echo >&2 "error: missing NVIDIA version"
+	echo >&2
+	echo >&2 "  does this system have an NVIDIA card/installed drivers?"
+	echo >&2
+	echo >&2 "  if using PRIME offload, you probably want to:"
+	echo >&2 "    export __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia"
+	echo >&2 "  https://http.download.nvidia.com/XFree86/Linux-x86_64/450.80.02/README/primerenderoffload.html"
+	echo >&2
+	echo >&2 "  use '--version XXX.YY' to override"
+	echo >&2
+	exit 1
+fi
+
+if [ -n "$imageTag" ]; then
+	image="$imageTag"
+else
+	suffix="nvidia-$nvidiaVersion"
+	case "$from" in
+		*:*) image="$from-$suffix" ;;
+		*)   image="$from:$suffix" ;;
+	esac
+	if [ -n "$doCache" ]; then
+		image="tianon/${suffix/-/:}" # tianon/nvidia:XXX.YY
+	fi
+fi
+if [ -n "$doImage" ]; then
+	echo "$image"
+	exit
+fi
+
+if [ "${dockerBuild[0]}" = 'docker' ]; then
+	dockerBuild+=( --tag "$image" )
+	if [ -n "$doCache" ]; then
+		dockerBuild+=( --target=nvidia )
+	fi
+fi
+
+{
+	cat <<'EOF'
+FROM debian:buster-slim AS nvidia
+
+RUN set -eux; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends \
+		ca-certificates \
+		wget \
+	; \
+	rm -rf /var/lib/apt/lists/*
+
+# https://http.download.nvidia.com/XFree86/Linux-x86_64/
+# https://http.download.nvidia.com/XFree86/Linux-x86_64/latest.txt
+EOF
+	echo "ENV NVIDIA_VERSION $nvidiaVersion"
+	cat <<'EOF'
+
+RUN set -eux; \
+	wget -O /tmp/nvidia.run "http://us.download.nvidia.com/XFree86/Linux-x86_64/$NVIDIA_VERSION/NVIDIA-Linux-x86_64-$NVIDIA_VERSION.run" --progress=dot:giga; \
+	chmod +x /tmp/nvidia.run
+
+EOF
+	echo "FROM $from"
+	cat <<'EOF'
+
+USER root
+COPY --from=nvidia /tmp/nvidia.run /tmp/nvidia.run
+RUN set -eux; \
+	/tmp/nvidia.run --advanced-options; \
+	/bin/true; \
+	mkdir /tmp/nvidia; \
+	for b in modprobe rmmod lsmod depmod; do \
+		ln -sv /bin/true "/tmp/nvidia/$b"; \
+	done; \
+	PATH="/tmp/nvidia:$PATH" \
+	/tmp/nvidia.run \
+		--ui=none \
+		--no-questions \
+		\
+		--no-backup \
+		--no-check-for-alternate-installs \
+		--no-kernel-module \
+		--no-kernel-module-source \
+		--no-nouveau-check \
+		--no-nvidia-modprobe \
+		--no-rpms \
+	; \
+	rm -rf /tmp/nvidia
+# https://http.download.nvidia.com/XFree86/Linux-x86_64/450.80.02/README/installedcomponents.html
+EOF
+
+	if [ -n "$user" ]; then
+		echo "USER $user"
+	fi
+} | "${dockerBuild[@]}"

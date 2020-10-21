@@ -7,35 +7,69 @@ hostname="$(hostname --short)"
 
 self="$(basename "$0")"
 self="${self%-docker}"
+
 home="$HOME/homes/$self"
 args=(
 	--rm
 	--security-opt no-new-privileges
 )
 image="tianon/$self"
+
+declare -A features=(
+	['X']=1
+	['audio']=1
+)
+_feature() { test -n "${features[$1]:-}"; }
+
 case "$self" in
 	steam)
+		features['GL']=1
+		features['dbus']=1
+		features['controllers']=1
+		args+=(
+			# TODO figure out why Proton requires this, and give it a more specific profile instead
+			--security-opt seccomp:unconfined
+		)
 		;;
 
 	lutris)
+		features['GL']=1
+		features['controllers']=1
 		args+=(
 			# Lutris uses $USER for Wine home directory detection
 			--env USER="$uid"
 			# https://github.com/lutris/lutris/blob/4315ba26f55dc208105b8abebf49d9ec28a67a1b/lutris/util/wine/prefix.py#L97
+
+			# TODO figure out why Wine requires this, and give it a more specific profile instead
+			--security-opt seccomp:unconfined
 		)
 		;;
 
 	zoom)
-		for device in /dev/video[0-9]*; do
-			if [ -c "$device" ]; then
-				args+=( --device "$device" )
-			fi
-		done
+		features['GL']=1
+		features['video']=1
+		if command -v pacmd > /dev/null && pacmd list-sinks | grep -q FLAT_VOLUME; then
+			{
+				echo
+				echo 'WARNING: it looks like you have FLAT_VOLUME enabled on at least one sink'
+				echo
+				echo '  Zoom is naughty, and will wreak havoc on that!'
+				echo
+				echo '  - https://www.eigenmagic.com/2018/04/16/fixed-zoom-resets-pulseaudio-volume-to-max-with-flat-volumes/'
+				echo '  - https://200ok.ch/posts/2019-05-20_disable_flatvolume_for_pulseaudio.html'
+				echo
+				echo '  $ echo flat-volumes = no >> ~/.config/pulse/daemon.conf'
+				echo '  $ pulseaudio --kill'
+				echo
+			} >&2
+			sleep 5
+		fi
 		;;
 
 	slack)
-		# TODO figure out how to get over this properly instead D: (probably similar to what Edge needs)
+		#features['GL']=1
 		args+=(
+			# TODO figure out how to get over this properly instead D: (probably similar to what Edge needs)
 			--cap-add SYS_ADMIN
 			--security-opt no-new-privileges=false
 		)
@@ -63,17 +97,8 @@ args+=(
 	--env HOME="/$self-home"
 	--workdir "/$self-home"
 
-	--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,ro
-	--env DISPLAY
-	--device /dev/dri # OpenGL
-	--ipc host # DevShm errors
-
 	--mount type=bind,src=/etc/localtime,dst=/etc/localtime,ro
 	--mount type=bind,src=/etc/machine-id,dst=/etc/machine-id,ro
-	--mount type=bind,src=/var/run/dbus,dst=/var/run/dbus,ro
-
-	# TODO figure out why Proton requires this, and give it a more specific profile instead
-	--security-opt seccomp:unconfined
 )
 for addGid in $(id -G); do
 	if [ "$addGid" != "$gid" ]; then
@@ -81,92 +106,67 @@ for addGid in $(id -G); do
 	fi
 done
 
-buildNeedsSanity=1
-_build() {
-	local suffix="$1"; shift
-	local newImage="$image"
-	case "$image" in
-		*:*) newImage+="-$suffix" ;;
-		*)   newImage+=":$suffix" ;;
-	esac
-	local sanity=$'USER root\nRUN grep -qF ID=ubuntu /etc/os-release\n'
-	if [ -n "$buildNeedsSanity" ]; then
-		buildNeedsSanity=
-	else
-		sanity=
-	fi
-	local steps; steps="$(cat)"
-	docker build --tag "$newImage" - <<-EODF
-		FROM $image
-		$sanity
-		$steps
-	EODF
-	image="$newImage"
-}
+if _feature 'X'; then
+	args+=(
+		--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,ro
+		--env DISPLAY
+		--ipc host # DevShm errors
+	)
+fi
+if _feature 'dbus'; then
+	# TODO dig into this one a bit more...
+	args+=( --mount type=bind,src=/var/run/dbus,dst=/var/run/dbus,ro )
+fi
 
-# NVIDIA...
-if glxinfo="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA Corporation' <<<"$glxinfo"; then
-	# time to get creative...?
-	if nvidiaVersion="$(sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}[.][0-9]+).*/s//\1/p' <<<"$glxinfo")" && [ -n "$nvidiaVersion" ]; then
-		nvidiaMajor="${nvidiaVersion%%.*}"
-		_build "nvidia-$nvidiaVersion" <<-EODF
-			RUN set -eux; \
-				apt-get update; \
-				apt-get install -y --no-install-recommends \
-					pkg-config \
-				; \
-				rm -rf /var/lib/apt/lists/*
-			RUN set -eux; \
-				wget -O nvidia.run 'http://us.download.nvidia.com/XFree86/Linux-x86_64/$nvidiaVersion/NVIDIA-Linux-x86_64-$nvidiaVersion.run' --progress=dot:giga; \
-				chmod +x nvidia.run; \
-				./nvidia.run --advanced-options; \
-				./nvidia.run \
-					--no-questions \
-					--ui=none \
-					--no-nvidia-modprobe \
-					--no-rpms \
-					--no-backup \
-					--no-kernel-module \
-					--no-nouveau-check \
-					--no-check-for-alternate-installs \
-				; \
-				rm nvidia.run
-		EODF
+if _feature 'GL'; then
+	args+=(
+		--device /dev/dri # OpenGL
+	)
+
+	# NVIDIA...
+	if nvidiaVersion="$(nvidiize --detect)"; then
+		newImage="$(nvidiize --version "$nvidiaVersion" --image "$image")"
+		nvidiize --version "$nvidiaVersion" --tag "$newImage" "$image"
+		image="$newImage"
+
 		for device in /dev/nvidia*; do
 			if [ -e "$device" ]; then
 				args+=( --device "$device" )
 			fi
 		done
-	else
-		echo >&2 'error: NVIDIA detected, but version number not found!'
-		echo >&2
-		echo >&2 "$glxinfo"
-		echo >&2
-		exit 1
 	fi
 fi
 
-if [ -d /dev/input ]; then
-	args+=( --mount type=bind,src=/dev/input,dst=/dev/input,ro )
+if _feature 'controllers'; then
+	if [ -d /dev/input ]; then
+		args+=( --mount type=bind,src=/dev/input,dst=/dev/input,ro )
 
-	majors="$(find /dev/input -type c -exec stat --format='%t' '{}' + | sort -u)"
-	for major in $majors; do
-		majorDec="$(( 16#$major ))"
-		args+=( --device-cgroup-rule "c $majorDec:* rmw" )
+		majors="$(find /dev/input -type c -exec stat --format='%t' '{}' + | sort -u)"
+		for major in $majors; do
+			majorDec="$(( 16#$major ))"
+			args+=( --device-cgroup-rule "c $majorDec:* rmw" )
+		done
+	fi
+	if [ -e /dev/uinput ]; then
+		args+=( --device /dev/uinput )
+	fi
+	if [ -d /run/udev ]; then
+		args+=( --mount type=bind,src=/run/udev,dst=/run/udev,ro )
+	fi
+	for device in /dev/hidraw*; do
+		[ -c "$device" ] || continue
+		args+=( --device "$device" )
 	done
 fi
-if [ -e /dev/uinput ]; then
-	args+=( --device /dev/uinput )
+if _feature 'video'; then
+	for device in /dev/video[0-9]*; do
+		if [ -c "$device" ]; then
+			args+=( --device "$device" )
+		fi
+	done
 fi
-if [ -d /run/udev ]; then
-	args+=( --mount type=bind,src=/run/udev,dst=/run/udev,ro )
-fi
-for device in /dev/hidraw*; do
-	[ -c "$device" ] || continue
-	args+=( --device "$device" )
-done
 
-if [ -d "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/pulse/native" ]; then
+if _feature 'audio' && [ -d "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/pulse/native" ]; then
 	args+=(
 		--mount type=bind,src="$XDG_RUNTIME_DIR/pulse",dst=/pulse,ro
 		--env PULSE_SERVER='unix:/pulse/native'
@@ -178,15 +178,22 @@ if [ -t 0 ] && [ -t 1 ]; then
 	args+=( --tty )
 fi
 
+# TODO this environment variable is steam-specific, but maybe the functionality/privileges are generally useful?
 case "${DEBUGGER:-}" in
 	'') ;;
 	strace | gdb)
-		_build "debug-$DEBUGGER" <<-EODF
+		case "$image" in
+			*:*) newImage="$image-debug-$DEBUGGER" ;;
+			*)   newImage="$image:debug-$DEBUGGER" ;;
+		esac
+		docker build --tag "$newImage" - <<-EODF
+			FROM $image
 			RUN set -eux; \
 				apt-get update; \
 				apt-get install -y --no-install-recommends $DEBUGGER; \
 				rm -rf /var/lib/apt/lists/*
 		EODF
+		image="$newImage"
 		args+=(
 			--env DEBUGGER
 			--cap-add SYS_PTRACE
