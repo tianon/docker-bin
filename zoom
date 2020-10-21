@@ -1,1 +1,24 @@
-steam-docker
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+_zenity() {
+	zenity --no-wrap --no-markup --ellipsize "$@"
+}
+
+if docker container inspect zoom &> /dev/null; then
+	if [ "$#" -gt 0 ]; then
+		_zenity --question --text=$'Zoom requested for:\n\n  '"$*"$'\n\nPass this URL off to Zoom container?'
+		exec docker exec zoom zoom "$@"
+	else
+		_zenity --error --text='Zoom requested, but already running!'
+		exit 1
+	fi
+fi
+
+if [ "$#" -gt 0 ]; then
+	_zenity --error --text=$'Zoom requested for:\n\n  '"$*"$'\n\nHowever, Zoom is not running, so we are cowardly refusing to fire it up.'
+	exit 1
+fi
+
+dir="$(dirname "$BASH_SOURCE")"
+exec "$dir/zoom-docker"
