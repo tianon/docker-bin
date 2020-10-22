@@ -114,14 +114,22 @@ if _feature 'X'; then
 	)
 fi
 if _feature 'dbus'; then
-	# TODO dig into this one a bit more...
-	args+=( --mount type=bind,src=/var/run/dbus,dst=/var/run/dbus,ro )
+	# TODO one or the other half of this is definitely necessary for desktop notifications (and Chrome/Edge likes to have it), but it seems like a lot of privilege and needs more research
+	if [ -d /var/run/dbus ]; then
+		args+=( --mount type=bind,src=/var/run/dbus,dst=/var/run/dbus,ro )
+	fi
+	case "${DBUS_SESSION_BUS_ADDRESS:-}" in
+		unix:path=/*)
+			args+=(
+				--env DBUS_SESSION_BUS_ADDRESS='unix:path=/run/dbus-bus'
+				--mount type=bind,src="${DBUS_SESSION_BUS_ADDRESS#unix:path=}",dst='/run/dbus-bus',ro
+			)
+			;;
+	esac
 fi
 
 if _feature 'GL'; then
-	args+=(
-		--device /dev/dri # OpenGL
-	)
+	args+=( --device /dev/dri )
 
 	# NVIDIA...
 	if nvidiaVersion="$(nvidiize --detect)"; then
