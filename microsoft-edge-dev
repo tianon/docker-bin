@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+self="$(basename "$0")"
+
+if docker container inspect "$self" &> /dev/null; then
+	exec docker exec "$self" "$self" "$@"
+fi
+
+dir="$(dirname "$BASH_SOURCE")"
+exec "$dir/$self-docker" "$self" "$@"

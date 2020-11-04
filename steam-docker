@@ -66,6 +66,22 @@ case "$self" in
 		fi
 		;;
 
+	microsoft-edge*)
+		features['GL']=1
+		features['video']=1
+		features['dbus']=1 # desktop notifications, I think?
+		image="${image//edge-/edge:}"
+		home="${home//edge-*/edge}" # use one $HOME for all Edge
+		args+=(
+			# TODO figure out whether we can use more minimal privileges here
+			--cap-add SYS_ADMIN
+			--security-opt no-new-privileges=false
+
+			# TODO figure out if this is generally desirable for all Edge (needed for Cast, useful for connecting to other things)
+			--network host
+		)
+		;;
+
 	slack)
 		#features['GL']=1
 		args+=(
