@@ -19,7 +19,7 @@ usage() {
 _detect() {
 	local glxinfo
 	if glxinfo="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA Corporation' <<<"$glxinfo"; then
-		sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}[.][0-9]+).*/s//\1/p' <<<"$glxinfo"
+		sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}([.][0-9]+)+).*/s//\1/p' <<<"$glxinfo"
 	fi
 }
 
