@@ -3,12 +3,18 @@ set -Eeuo pipefail
 
 # takes a Docker image and adds NVIDIA drivers to it (hopefully)
 
-#   nvidiaVersion="$(nvidiize --detect)"
-#   nvidiize --version "$nvidiaVersion" --cache --pull
-#   docker pull tianon/steam
-#   image="$(nvidiize --version "$nvidiaVersion" --image tianon/steam)"
-#   nvidiize --version "$nvidiaVersion" --tag "$image" tianon/steam
-#   docker run ... "$image"
+usage() {
+	cat <<-'EOU'
+
+		   nvidiaVersion="$(nvidiize --detect)"
+		   nvidiize --version "$nvidiaVersion" --cache --pull
+		   docker pull tianon/steam
+		   image="$(nvidiize --version "$nvidiaVersion" --image tianon/steam)"
+		   nvidiize --version "$nvidiaVersion" --tag "$image" tianon/steam
+		   docker run ... "$image"
+
+	EOU
+}
 
 _detect() {
 	local glxinfo
@@ -17,7 +23,7 @@ _detect() {
 	fi
 }
 
-opts="$(getopt --options '' --longoptions 'cache,detect,dockerfile,image,pull,tag:,version:' -- "$@")"
+opts="$(getopt --options '' --longoptions 'cache,detect,dockerfile,help,image,pull,tag:,version:' -- "$@")"
 eval "set -- $opts"
 
 doCache=
@@ -31,6 +37,7 @@ while true; do
 		--cache) doCache=1 ;;
 		--detect) nvidiaVersion="$(_detect)"; if [ -n "$nvidiaVersion" ]; then echo "$nvidiaVersion"; exit; else exit 1; fi ;;
 		--dockerfile) dockerBuild=( cat ) ;;
+		--help) usage; exit ;;
 		--image) doImage=1 ;;
 		--pull) dockerBuild+=( --pull ) ;;
 		--tag) imageTag="$1"; shift ;;
@@ -38,6 +45,7 @@ while true; do
 		--) break ;;
 		*)
 			echo >&2 "error: unknown flag: '$flag'"
+			usage >&2
 			exit 1
 			;;
 	esac
