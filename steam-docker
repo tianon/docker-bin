@@ -106,6 +106,15 @@ args+=(
 mkdir -p "$home"
 home="$(cd "$home" && pwd -P)"
 
+# for some reason, chromium-based apps can't handle reading /etc/localtime (or even /etc/timezone) correctly :/
+# (likely related to it normally being a symlink to "Etc/UTC" and Docker following the symlink when mounting from the host)
+if [ -n "${TZ:-}" ]; then
+	args+=( --env TZ )
+elif [ -s /etc/timezone ]; then
+	timezone="$(< /etc/timezone)"
+	args+=( --env TZ="$timezone" )
+fi
+
 args+=(
 	--user "$uid:$gid"
 
