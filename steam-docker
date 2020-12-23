@@ -44,7 +44,7 @@ case "$self" in
 			# https://github.com/lutris/lutris/blob/4315ba26f55dc208105b8abebf49d9ec28a67a1b/lutris/util/wine/prefix.py#L97
 
 			# TODO figure out why Wine requires this, and give it a more specific profile instead
-			--security-opt seccomp:unconfined
+			--security-opt seccomp=unconfined
 		)
 		;;
 
@@ -233,8 +233,8 @@ case "${DEBUGGER:-}" in
 		args+=(
 			--env DEBUGGER
 			--cap-add SYS_PTRACE
-			--security-opt seccomp:unconfined
-			--security-opt apparmor:unconfined
+			--security-opt seccomp=unconfined
+			--security-opt apparmor=unconfined
 		)
 		;;
 esac
