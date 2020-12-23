@@ -27,8 +27,11 @@ case "$self" in
 		features['dbus']=1
 		features['controllers']=1
 		args+=(
-			# TODO figure out why Proton requires this, and give it a more specific profile instead
-			--security-opt seccomp:unconfined
+			# https://gitlab.steamos.cloud/steamrt/steam-runtime-tools#pressure-vessel-putting-steam-in-containers
+			# https://archive.fosdem.org/2020/schedule/event/containers_steam/
+			# https://gitlab.steamos.cloud/steamrt/steam-runtime-tools/-/issues/35
+			--security-opt seccomp=unconfined
+			--security-opt apparmor=unconfined
 		)
 		;;
 
