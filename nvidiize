@@ -17,12 +17,14 @@ usage() {
 }
 
 _detect() {
-	if ! command -v glxinfo > /dev/null; then
-		glxinfo # command not found
-	fi
-	local glxinfo
-	if glxinfo="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA Corporation' <<<"$glxinfo"; then
-		sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}([.][0-9]+)+).*/s//\1/p' <<<"$glxinfo"
+	local temp
+	if temp="$(export PATH="/sbin:/usr/sbin:/usr/local/sbin:$PATH"; modinfo --field=version nvidia-current 2>/dev/null)" && [ -n "$temp" ]; then
+		echo "$temp"
+	elif command -v glxinfo > /dev/null && temp="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA Corporation' <<<"$temp"; then
+		sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}([.][0-9]+)+).*/s//\1/p' <<<"$temp"
+	else
+		echo >&2 'error: failed to determine NVIDIA driver version (via "modinfo" or "glxinfo")'
+		exit 1
 	fi
 }
 
