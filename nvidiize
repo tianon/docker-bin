@@ -142,7 +142,7 @@ RUN set -eux; \
 	for b in modprobe rmmod lsmod depmod; do \
 		ln -sv /bin/true "/tmp/nvidia/$b"; \
 	done; \
-	PATH="/tmp/nvidia:$PATH" \
+	export PATH="/tmp/nvidia:$PATH"; \
 	/tmp/nvidia.run \
 		--ui=none \
 		--no-questions \
@@ -154,6 +154,9 @@ RUN set -eux; \
 		--no-nouveau-check \
 		--no-nvidia-modprobe \
 		--no-rpms \
+		\
+# needed for 390.138
+		--install-libglvnd \
 	; \
 	rm -rf /tmp/nvidia
 # https://http.download.nvidia.com/XFree86/Linux-x86_64/450.80.02/README/installedcomponents.html
