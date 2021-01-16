@@ -18,14 +18,27 @@ usage() {
 
 _detect() {
 	local temp
+
+	# if we have $DISPLAY and glxinfo, we should prefer that (since we might be on a PRIME system and not using nVidia right now)
+	if [ -n "${DISPLAY:-}" ] && command -v glxinfo > /dev/null; then
+		if temp="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA Corporation' <<<"$temp"; then
+			temp="$(sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}([.][0-9]+)+).*/s//\1/p' <<<"$temp")"
+			if [ -n "$temp" ]; then
+				echo "$temp"
+				return 0
+			fi
+		fi
+		echo >&2 'error: failed to determine NVIDIA driver version (via "glxinfo")'
+		return 1
+	fi
+
+	# if DISPLAY isn't set (or glxinfo is missing), let's fall back to the version of the kernel module loaded (which is more accurate/reliable anyhow :D)
 	if temp="$(export PATH="/sbin:/usr/sbin:/usr/local/sbin:$PATH"; modinfo --field=version nvidia-current 2>/dev/null)" && [ -n "$temp" ]; then
 		echo "$temp"
-	elif command -v glxinfo > /dev/null && temp="$(glxinfo -B 2>/dev/null)" && grep -qF 'OpenGL vendor string: NVIDIA Corporation' <<<"$temp"; then
-		sed -rne '/^OpenGL version string:.*NVIDIA ([0-9]{3,}([.][0-9]+)+).*/s//\1/p' <<<"$temp"
-	else
-		echo >&2 'error: failed to determine NVIDIA driver version (via "modinfo" or "glxinfo")'
-		exit 1
+		return 0
 	fi
+	echo >&2 'error: failed to determine NVIDIA driver version (via "modinfo" *or* "glxinfo")'
+	return 1
 }
 
 opts="$(getopt --options '' --longoptions 'cache,detect,dockerfile,help,image,pull,tag:,version:' -- "$@")"
