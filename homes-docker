@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+#
+# if you're reading this, you should check out https://subuser.org/ instead!
+#
+
 uid="$(id -u)"
 gid="$(id -g)"
 hostname="$(hostname --short)"
