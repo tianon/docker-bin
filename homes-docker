@@ -138,6 +138,9 @@ for addGid in $(id -G); do
 	fi
 done
 
+# if this ends up non-empty, we'll bind mount the host "/dev" inside the container and compare this list to "/proc/devices" to add appropriate cgroup rules for accessing device types
+procDevices=()
+
 if _feature 'X'; then
 	args+=(
 		--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,ro
@@ -161,7 +164,7 @@ if _feature 'dbus'; then
 fi
 
 if _feature 'GL'; then
-	args+=( --device /dev/dri )
+	procDevices+=( 'drm' ) # /dev/dri
 
 	# NVIDIA...
 	if nvidiaVersion="$(nvidiize --detect)"; then
@@ -169,11 +172,7 @@ if _feature 'GL'; then
 		nvidiize --version "$nvidiaVersion" --tag "$newImage" "$image"
 		image="$newImage"
 
-		for device in /dev/nvidia*; do
-			if [ -e "$device" ]; then
-				args+=( --device "$device" )
-			fi
-		done
+		procDevices+=( 'nvidia-frontend' ) # /dev/nvidia*
 	fi
 fi
 
@@ -181,11 +180,7 @@ if _feature 'controllers'; then
 	if [ -d /dev/input ]; then
 		args+=( --mount type=bind,src=/dev/input,dst=/dev/input,ro )
 
-		majors="$(find /dev/input -type c -exec stat --format='%t' '{}' + | sort -u)"
-		for major in $majors; do
-			majorDec="$(( 16#$major ))"
-			args+=( --device-cgroup-rule "c $majorDec:* rmw" )
-		done
+		procDevices+=( 'input' ) # /dev/input
 	fi
 	if [ -e /dev/uinput ]; then
 		args+=( --device /dev/uinput )
@@ -193,17 +188,10 @@ if _feature 'controllers'; then
 	if [ -d /run/udev ]; then
 		args+=( --mount type=bind,src=/run/udev,dst=/run/udev,ro )
 	fi
-	for device in /dev/hidraw*; do
-		[ -c "$device" ] || continue
-		args+=( --device "$device" )
-	done
+	procDevices+=( 'hidraw' ) # /dev/hidraw*
 fi
 if _feature 'video'; then
-	for device in /dev/video[0-9]*; do
-		if [ -c "$device" ]; then
-			args+=( --device "$device" )
-		fi
-	done
+	procDevices+=( 'video4linux' ) # /dev/video*
 fi
 
 if _feature 'audio' && [ -d "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/pulse/native" ]; then
@@ -211,6 +199,23 @@ if _feature 'audio' && [ -d "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/p
 		--mount type=bind,src="$XDG_RUNTIME_DIR/pulse",dst=/pulse,ro
 		--env PULSE_SERVER='unix:/pulse/native'
 	)
+fi
+
+if _feature 'CD'; then
+	procDevices+=( 'sr' ) # /dev/sr*
+	procDevices+=( 'sg' ) # /dev/sg*
+fi
+
+if [ "${#procDevices[@]}" -gt 0 ]; then
+	args+=( --mount type=bind,src=/dev,dst=/dev,bind-propagation=rslave,ro )
+	for procDevice in "${procDevices[@]}"; do
+		major="$(awk -v t="$procDevice" '$2 == t { print $1; exit }' /proc/devices)"
+		if [ -z "$major" ]; then
+			echo >&2 "error: failed to find '$procDevice' in '/proc/devices'!"
+			exit 1
+		fi
+		args+=( --device-cgroup-rule "c $major:* rmw" )
+	done
 fi
 
 args+=( --interactive )
