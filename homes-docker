@@ -12,18 +12,80 @@ hostname="$(hostname --short)"
 self="$(basename "$0")"
 self="${self%-docker}"
 
-home="$HOME/homes/$self"
+# add our directory to PATH (just in case)
+selfDir="$(readlink -f "$BASH_SOURCE")"
+selfDir="$(dirname "$selfDir")"
+export PATH="$PATH:$selfDir"
+
 args=(
 	--rm
 	--security-opt no-new-privileges
 )
-image="tianon/$self"
 
 declare -A features=(
 	['X']=1
 	['audio']=1
 )
 _feature() { test -n "${features[$1]:-}"; }
+
+home=
+image=
+dockerArgs=()
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--feature) features["$2"]=1; shift ;;
+		--no-feature) unset features["$2"]; shift ;;
+
+		--home) home="$2"; shift ;;
+		--image) image="$2"; shift ;;
+
+		--cap-add | \
+		--device | \
+		--entrypoint | \
+		--env | \
+		--hostname | \
+		--ipc | \
+		--mount | \
+		--name | \
+		--network | \
+		--security-opt | \
+		--sysctl | \
+		--tmpfs | \
+		--workdir )
+			dockerArgs+=( "$1" "$2" )
+			shift
+			;;
+
+		--detach | \
+		--init )
+			dockerArgs+=( "$1" )
+			;;
+
+		--) shift; break ;;
+
+		*) break ;; # NOT FOR US, BAIL BAIL BAIL (don't break the applications we're wrapping :D)
+	esac
+	shift
+done
+
+if [ -z "$image" ]; then
+	if [ "$self" = 'homes' ]; then
+		image="$1"
+		shift
+	else
+		image="tianon/$self"
+	fi
+fi
+if [ "$self" = 'homes' ]; then
+	self="${image##*/}"
+	self="${self%%:*}"
+fi
+if [ -z "$home" ]; then
+	home="$HOME/homes/$self"
+fi
+if [[ "$home" != */* ]]; then
+	home="$HOME/homes/$home"
+fi
 
 case "$self" in
 	steam)
@@ -99,14 +161,14 @@ case "$self" in
 		;;
 
 	*)
-		echo >&2 "error: unknown Docker image: $self"
-		exit 1
+#		echo >&2 "error: unknown Docker image: $self"
+#		exit 1
 		;;
 esac
 
 args+=(
 	--name "$self"
-	--init --rm
+	--init
 	--hostname "$hostname-docker"
 )
 
@@ -125,7 +187,7 @@ fi
 args+=(
 	--user "$uid:$gid"
 
-	--mount type=bind,src="$home",dst="/$self-home"
+	--mount type=bind,src="$home",dst="/$self-home",bind-propagation=rslave
 	--env HOME="/$self-home"
 	--workdir "/$self-home"
 
@@ -247,6 +309,9 @@ case "${DEBUGGER:-}" in
 		)
 		;;
 esac
+
+# add any extra "user" arguments after everything so they can override all the things
+args+=( "${dockerArgs[@]}" )
 
 set -x
 exec docker run "${args[@]}" "$image" "$@"
