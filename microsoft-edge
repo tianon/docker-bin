@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+self="$(basename "$0")"
+
+containers=( "$self" )
+if [ "$self" = 'microsoft-edge' ]; then
+	for channel in stable beta dev; do
+		containers+=( "$self-$channel" )
+	done
+fi
+
+for container in "${containers[@]}"; do
+	if docker container inspect "$container" &> /dev/null; then
+		echo >&2 "note: found '$container' container; launching '$self' inside it..."
+		exec docker exec -i "$container" "$self" "$@"
+	fi
+done
+
+dir="$(dirname "$BASH_SOURCE")"
+exec "$dir/$self-docker" -- "$self" "$@"
