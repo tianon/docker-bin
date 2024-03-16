@@ -135,11 +135,19 @@ RUN set -eux; \
 # https://http.download.nvidia.com/XFree86/Linux-x86_64/
 # https://http.download.nvidia.com/XFree86/Linux-x86_64/latest.txt
 EOF
-	echo "ENV NVIDIA_VERSION $nvidiaVersion"
+	url="http://us.download.nvidia.com/XFree86/Linux-x86_64/$nvidiaVersion/NVIDIA-Linux-x86_64-$nvidiaVersion.run"
+	sha256="$(wget -qO- "$url.sha256sum")"
+	sha256="${sha256%% *}"
+	cat <<EOF
+ENV NVIDIA_VERSION $nvidiaVersion
+ENV NVIDIA_URL $url
+ENV NVIDIA_SHA256 $sha256
+EOF
 	cat <<'EOF'
 
 RUN set -eux; \
-	wget -O /tmp/nvidia.run "http://us.download.nvidia.com/XFree86/Linux-x86_64/$NVIDIA_VERSION/NVIDIA-Linux-x86_64-$NVIDIA_VERSION.run" --progress=dot:giga; \
+	wget -O /tmp/nvidia.run "$NVIDIA_URL" --progress=dot:giga; \
+	echo "$NVIDIA_SHA256 */tmp/nvidia.run" | sha256sum --strict --check -; \
 	chmod +x /tmp/nvidia.run
 
 EOF
