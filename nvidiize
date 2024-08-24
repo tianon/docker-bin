@@ -148,7 +148,8 @@ EOF
 RUN set -eux; \
 	wget -O /tmp/nvidia.run "$NVIDIA_URL" --progress=dot:giga; \
 	echo "$NVIDIA_SHA256 */tmp/nvidia.run" | sha256sum --strict --check -; \
-	chmod +x /tmp/nvidia.run
+	chmod +x /tmp/nvidia.run; \
+	/tmp/nvidia.run --check
 
 EOF
 	echo "FROM $from"
