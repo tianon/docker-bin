@@ -21,7 +21,9 @@ fi
 # oh no, convert "docker save" output into OCI format
 [ -s manifest.json ] # if this fails, your Docker is way too old for saving -- throw it out!
 
-[ -s oci-layout ] || jq -nc '{ imageLayoutVersion: "1.0.0" }' > oci-layout
+if [ ! -s oci-layout ]; then
+	jq -nc '{ imageLayoutVersion: "1.0.0" }' > oci-layout
+fi
 
 mkdir -p blobs/sha256
 put() {
@@ -32,8 +34,9 @@ put() {
 	size="$(stat --format '%s' "$file")" || return 1
 
 	local sha256
-	sha256="$(sha256sum "$file")"
+	sha256="$(sha256sum "$file")" || return 1
 	sha256="${sha256%% *}"
+	[ "${#sha256}" = 64 ] || return 1
 
 	ln -sf --relative -T "$file" "blobs/sha256/$sha256"
 
