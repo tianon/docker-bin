@@ -14,7 +14,7 @@ tar -xvf temp.tar
 rm temp.tar
 
 if [ -s index.json ]; then
-	# yay, new enough Docker!
+	# yay, new enough Docker! (v25+; https://github.com/moby/moby/pull/44598)
 	exit 0
 fi
 
