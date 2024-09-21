@@ -30,6 +30,7 @@ _feature() { test -n "${features[$1]:-}"; }
 
 home=
 image=
+pull=
 dockerArgs=()
 while [ "$#" -gt 0 ]; do
 	case "$1" in
@@ -38,6 +39,7 @@ while [ "$#" -gt 0 ]; do
 
 		--home) home="$2"; shift ;;
 		--image) image="$2"; shift ;;
+		--pull) pull=1 ;;
 
 		--cap-add | \
 		--device | \
@@ -166,6 +168,11 @@ case "$self" in
 		;;
 esac
 
+if [ -n "$pull" ]; then
+	docker pull "$image"
+fi
+docker image inspect --format '1' "$image" > /dev/null
+
 args+=(
 	--name "$self"
 	--init
@@ -230,8 +237,13 @@ if _feature 'GL'; then
 
 	# NVIDIA...
 	if nvidiaVersion="$(nvidiize --detect)"; then
-		newImage="$(nvidiize --version "$nvidiaVersion" --image "$image")"
-		nvidiize --version "$nvidiaVersion" --tag "$newImage" "$image"
+		nvidiizeArgs=( "$image" --version "$nvidiaVersion" )
+		newImage="$(nvidiize "${nvidiizeArgs[@]}" --image)"
+		nvidiizeArgs+=( --tag "$newImage" )
+		if [ -n "$pull" ]; then
+			nvidiizeArgs+=( --pull )
+		fi
+		nvidiize "${nvidiizeArgs[@]}"
 		image="$newImage"
 
 		procDevices+=( 'nvidia-frontend' ) # /dev/nvidia*
