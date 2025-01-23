@@ -45,11 +45,13 @@ while [ "$#" -gt 0 ]; do
 		--device | \
 		--entrypoint | \
 		--env | \
+		--group-add | \
 		--hostname | \
 		--ipc | \
 		--mount | \
 		--name | \
 		--network | \
+		--publish | \
 		--security-opt | \
 		--sysctl | \
 		--tmpfs | \
@@ -173,10 +175,16 @@ if [ -n "$pull" ]; then
 fi
 docker image inspect --format '1' "$image" > /dev/null
 
+if _feature 'X' && [[ "${DISPLAY:-}" == localhost:* ]]; then
+	# SSH's X forwarding auth is picky about hostname
+	args+=( --hostname "$hostname" )
+else
+	args+=( --hostname "$hostname-docker" )
+fi
+
 args+=(
 	--name "$self"
 	--init
-	--hostname "$hostname-docker"
 )
 
 mkdir -p "$home"
@@ -197,6 +205,7 @@ args+=(
 	--mount type=bind,src="$home",dst="/$self-home",bind-propagation=rslave
 	--env HOME="/$self-home"
 	--workdir "/$self-home"
+	--mount type=bind,src="$home",dst="$home",bind-propagation=rslave
 
 	--mount type=bind,src=/etc/localtime,dst=/etc/localtime,ro
 	--mount type=bind,src=/etc/machine-id,dst=/etc/machine-id,ro
@@ -216,6 +225,27 @@ if _feature 'X'; then
 		--env DISPLAY
 		--ipc host # DevShm errors
 	)
+	if [ -s "$HOME/.Xauthority" ]; then
+		args+=( --mount "type=bind,src=$HOME/.Xauthority,dst=/$self-home/.Xauthority,ro" )
+	fi
+fi
+if _feature 'wayland' && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+	waylandSocket="$WAYLAND_DISPLAY"
+	case "$waylandSocket" in
+		/*) ;; # absolute path, kosher!
+		*) # otherwise, relative to $XDG_RUNTIME_DIR
+			if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
+				waylandSocket="$XDG_RUNTIME_DIR/$waylandSocket"
+			else
+				echo >&2 "error: WAYLAND_DISPLAY is set to a relative path ('$WAYLAND_DISPLAY'), but XDG_RUNTIME_DIR is not set (or does not exist)"
+				exit 1
+			fi
+			;;
+	esac
+	if [ ! -S "$waylandSocket" ]; then
+		echo >&2 "error: WAYLAND_DISPLAY refers to '$waylandSocket', which is not a socket (or does not exist)"
+		exit 1
+	fi
 fi
 if _feature 'dbus'; then
 	# TODO one or the other half of this is definitely necessary for desktop notifications (and Chrome/Edge likes to have it), but it seems like a lot of privilege and needs more research
@@ -230,6 +260,7 @@ if _feature 'dbus'; then
 			)
 			;;
 	esac
+	# TODO check /tmp/dbus-* for self-ownership too
 fi
 
 if _feature 'GL'; then
@@ -246,7 +277,10 @@ if _feature 'GL'; then
 		nvidiize "${nvidiizeArgs[@]}"
 		image="$newImage"
 
-		procDevices+=( 'nvidia-frontend' ) # /dev/nvidia*
+		# make sure we pass through PRIME offload variables, if set (https://http.download.nvidia.com/XFree86/Linux-x86_64/450.80.02/README/primerenderoffload.html)
+		args+=( --env __NV_PRIME_RENDER_OFFLOAD --env __GLX_VENDOR_LIBRARY_NAME )
+
+		procDevices+=( 'nvidia-frontend' ) # /dev/nvidia[0-9], /dev/nvidiactl, /dev/nvidia-modeset
 	fi
 fi
 
@@ -285,8 +319,8 @@ if [ "${#procDevices[@]}" -gt 0 ]; then
 	for procDevice in "${procDevices[@]}"; do
 		major="$(awk -v t="$procDevice" '$2 == t { print $1; exit }' /proc/devices)"
 		if [ -z "$major" ]; then
-			echo >&2 "error: failed to find '$procDevice' in '/proc/devices'!"
-			exit 1
+			echo >&2 "warning: failed to find '$procDevice' in '/proc/devices'!"
+			continue
 		fi
 		args+=( --device-cgroup-rule "c $major:* rmw" )
 	done
@@ -307,6 +341,7 @@ case "${DEBUGGER:-}" in
 		esac
 		docker build --tag "$newImage" - <<-EODF
 			FROM $image
+			USER root
 			RUN set -eux; \
 				apt-get update; \
 				apt-get install -y --no-install-recommends $DEBUGGER; \
