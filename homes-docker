@@ -178,6 +178,7 @@ docker image inspect --format '1' "$image" > /dev/null
 if _feature 'X' && [[ "${DISPLAY:-}" == localhost:* ]]; then
 	# SSH's X forwarding auth is picky about hostname
 	args+=( --hostname "$hostname" )
+	# TODO this needs to be --network host explicitly, doesn't it? 🤔 ("localhost" can't possibly work otherwise)
 else
 	args+=( --hostname "$hostname-docker" )
 fi
