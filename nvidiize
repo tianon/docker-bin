@@ -122,15 +122,14 @@ fi
 
 {
 	cat <<'EOF'
-FROM debian:bookworm-slim AS nvidia
+FROM debian:trixie-slim AS nvidia
 
 RUN set -eux; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends \
+	apt-get install --update -y --no-install-recommends \
 		ca-certificates \
 		wget \
 	; \
-	rm -rf /var/lib/apt/lists/*
+	apt-get dist-clean
 
 # https://http.download.nvidia.com/XFree86/Linux-x86_64/
 # https://http.download.nvidia.com/XFree86/Linux-x86_64/latest.txt
